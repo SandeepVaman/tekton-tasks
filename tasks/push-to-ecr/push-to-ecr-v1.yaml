@@ -1,0 +1,104 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: push-to-ecr
+  labels:
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  description: Build and push container image to AWS ECR using Kaniko
+
+  params:
+    - name: image
+      description: Full ECR image reference (registry/repository:tag)
+    - name: dockerfile
+      description: Path to the Dockerfile to build
+      default: ./Dockerfile
+    - name: context
+      description: The build context used by Kaniko
+      default: ./
+    - name: aws-region
+      description: AWS region where ECR repository exists
+      default: us-east-1
+    - name: extra-args
+      type: array
+      default: []
+      description: Extra arguments to pass to kaniko
+
+  workspaces:
+    - name: source
+      description: Holds the context and Dockerfile
+    - name: aws-credentials
+      description: AWS credentials for ECR authentication
+
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest of the image just built
+    - name: IMAGE_URL
+      description: URL of the image just built
+
+  steps:
+    - name: ecr-login
+      image: amazon/aws-cli:2.13.25
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: $(workspaces.aws-credentials.name)
+              key: aws_access_key_id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: $(workspaces.aws-credentials.name)
+              key: aws_secret_access_key
+        - name: AWS_DEFAULT_REGION
+          value: $(params.aws-region)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "Logging into ECR..."
+        aws ecr get-login-password --region $(params.aws-region) > /workspace/ecr-token
+
+        REGISTRY=$(echo "$(params.image)" | cut -d'/' -f1)
+
+        # Create docker config for Kaniko
+        mkdir -p /kaniko/.docker
+        cat > /kaniko/.docker/config.json <<EOF
+        {
+          "auths": {
+            "${REGISTRY}": {
+              "auth": "$(echo -n "AWS:$(cat /workspace/ecr-token)" | base64 -w 0)"
+            }
+          }
+        }
+        EOF
+      volumeMounts:
+        - name: kaniko-secret
+          mountPath: /kaniko/.docker
+
+    - name: build-and-push
+      workingDir: $(workspaces.source.path)
+      image: gcr.io/kaniko-project/executor:v1.14.0@sha256:4bfe90c00b114f94c23a003a59f0bcbf9b49d93e75e14dbbfec8f1796b36d067
+      args:
+        - $(params.extra-args[*])
+        - --dockerfile=$(params.dockerfile)
+        - --context=$(workspaces.source.path)/$(params.context)
+        - --destination=$(params.image)
+        - --digest-file=$(results.IMAGE_DIGEST.path)
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+        - name: kaniko-secret
+          mountPath: /kaniko/.docker
+
+    - name: write-url
+      image: docker.io/library/bash:5.2.21
+      script: |
+        set -e
+        image="$(params.image)"
+        echo -n "${image}" | tee "$(results.IMAGE_URL.path)"
+
+  volumes:
+    - name: kaniko-secret
+      emptyDir: {}

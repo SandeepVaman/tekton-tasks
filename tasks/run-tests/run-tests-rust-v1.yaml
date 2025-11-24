@@ -1,0 +1,41 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: run-tests-rust
+  labels:
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  description: Run Rust tests using cargo
+
+  params:
+    - name: test-command
+      type: string
+      description: The cargo test command to run
+      default: "cargo test"
+    - name: rust-version
+      type: string
+      description: Rust version to use
+      default: "1.75"
+    - name: additional-args
+      type: string
+      description: Additional arguments to pass to cargo test
+      default: ""
+
+  workspaces:
+    - name: source
+      description: The workspace containing the Rust source code
+
+  steps:
+    - name: run-tests
+      image: rust:$(params.rust-version)
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -e
+
+        echo "Running Rust tests..."
+        echo "Command: $(params.test-command) $(params.additional-args)"
+
+        $(params.test-command) $(params.additional-args)
+
+        echo "Tests completed successfully!"
