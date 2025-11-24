@@ -63,10 +63,6 @@ spec:
       type: string
       default: "/home/git"
 
-  workspaces:
-    - name: output
-      description: The git repo will be cloned onto the volume backing this Workspace
-
   results:
     - name: commit
       description: The precise commit SHA that was fetched by this Task
