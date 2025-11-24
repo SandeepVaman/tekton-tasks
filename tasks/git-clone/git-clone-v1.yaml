@@ -54,6 +54,10 @@ spec:
       description: Log the commands that are executed during `git-clone`'s operation
       type: string
       default: "true"
+    - name: sparseCheckoutDirectories
+      description: Define the directory patterns to match or exclude when performing a sparse checkout
+      type: string
+      default: ""
     - name: gitInitImage
       description: The image providing the git-init binary that this Task runs
       type: string
@@ -101,6 +105,8 @@ spec:
           value: $(params.noProxy)
         - name: PARAM_VERBOSE
           value: $(params.verbose)
+        - name: PARAM_SPARSE_CHECKOUT_DIRECTORIES
+          value: $(params.sparseCheckoutDirectories)
         - name: PARAM_USER_HOME
           value: $(params.userHome)
         - name: WORKSPACE_OUTPUT_PATH
