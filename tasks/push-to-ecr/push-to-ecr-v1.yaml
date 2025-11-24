@@ -78,7 +78,7 @@ spec:
 
     - name: build-and-push
       workingDir: $(workspaces.source.path)
-      image: gcr.io/kaniko-project/executor:v1.14.0@sha256:4bfe90c00b114f94c23a003a59f0bcbf9b49d93e75e14dbbfec8f1796b36d067
+      image: gcr.io/kaniko-project/executor:v1.23.2
       args:
         - $(params.extra-args[*])
         - --dockerfile=$(params.dockerfile)
