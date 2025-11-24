@@ -40,22 +40,19 @@ spec:
     - name: ecr-login
       image: amazon/aws-cli:2.13.25
       workingDir: $(workspaces.source.path)
-      env:
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: $(workspaces.aws-credentials.name)
-              key: aws_access_key_id
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: $(workspaces.aws-credentials.name)
-              key: aws_secret_access_key
-        - name: AWS_DEFAULT_REGION
-          value: $(params.aws-region)
       script: |
         #!/usr/bin/env bash
         set -e
+
+        # Read AWS credentials from workspace (mounted secret)
+        if [ -f "$(workspaces.aws-credentials.path)/aws_access_key_id" ]; then
+          export AWS_ACCESS_KEY_ID=$(cat $(workspaces.aws-credentials.path)/aws_access_key_id)
+          export AWS_SECRET_ACCESS_KEY=$(cat $(workspaces.aws-credentials.path)/aws_secret_access_key)
+        else
+          echo "Error: AWS credentials not found in workspace"
+          exit 1
+        fi
+        export AWS_DEFAULT_REGION=$(params.aws-region)
 
         echo "Logging into ECR..."
         aws ecr get-login-password --region $(params.aws-region) > /workspace/ecr-token
@@ -68,11 +65,13 @@ spec:
         {
           "auths": {
             "${REGISTRY}": {
-              "auth": "$(echo -n "AWS:$(cat /workspace/ecr-token)" | base64 -w 0)"
+              "auth": "$(echo -n "AWS:$(cat /workspace/ecr-token)" | base64 | tr -d '\n')"
             }
           }
         }
         EOF
+
+        echo "ECR login successful"
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
@@ -86,11 +85,14 @@ spec:
         - --context=$(workspaces.source.path)/$(params.context)
         - --destination=$(params.image)
         - --digest-file=$(results.IMAGE_DIGEST.path)
+      # Kaniko requires root to build container images
+      # This is acceptable as it only builds, doesn't execute arbitrary code
       securityContext:
         runAsUser: 0
       volumeMounts:
         - name: kaniko-secret
           mountPath: /kaniko/.docker
+          readOnly: true
 
     - name: write-url
       image: docker.io/library/bash:5.2.21
